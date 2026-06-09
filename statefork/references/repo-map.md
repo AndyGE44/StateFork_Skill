@@ -1,35 +1,31 @@
 # StateFork Repo Map
 
-## VM Layout
+Use this when you need source landmarks, backend semantics, direct command examples, build steps, or troubleshooting details.
 
-Default SSH host:
+## Configured Layout
+
+Do not assume fixed hostnames or absolute paths. Source the Linux-side config:
 
 ```bash
-ssh sf-exp
+. ~/.statefork-agent.env
+printf '%s\n' "$STATEFORK_ROOT" "$WAYPOINT_ROOT" "$STATEFORK_WORK_ROOT"
 ```
 
-Repos:
+Default bootstrap paths, when the user did not override them:
 
 ```text
-/users/alexxjk/Andy_StateFork
-/users/alexxjk/Andy_Waypoint
-```
-
-Observed versions when this skill was created:
-
-```text
-Andy_StateFork git: 219a5ca
-Andy_Waypoint git: d907cbb
-waypoint version v0.6.0
+$HOME/statefork-agent/StateFork
+$HOME/statefork-agent/Waypoint
+$HOME/statefork-agent/work
 ```
 
 The VM may not have `rg`; use `find` and `grep` if needed.
 
 ## What Each Repo Does
 
-`Andy_StateFork` is the Python controller, shell, decider, and benchmarking layer. It manages snapshot trees and abstracts multiple backends including Docker, Podman, CRIU, Hybrid Podman+CRIU, gVisor, Firecracker, and Waypoint.
+`StateFork` is the Python controller, shell, decider, and benchmarking layer. It manages snapshot trees and abstracts multiple backends including Docker, Podman, CRIU, Hybrid Podman+CRIU, gVisor, Firecracker, and Waypoint.
 
-`Andy_Waypoint` is the Go/Linux backend that combines OverlayFS filesystem state with CRIU memory/process state. It also manages PTY-backed shell sessions so commands can preserve shell state across checkpoints.
+`Waypoint` is the Go/Linux backend that combines OverlayFS filesystem state with CRIU memory/process state. It also manages PTY-backed shell sessions so commands can preserve shell state across checkpoints.
 
 ## Key StateFork Files
 
@@ -57,12 +53,13 @@ ckpt_attach         legacy alias for waypoint_attach
 Interactive shell mapping:
 
 ```bash
-cd /users/alexxjk/Andy_StateFork
-sudo .venv/bin/python -m interface.shell --method waypoint --decider always_true
-sudo .venv/bin/python -m interface.shell --method waypoint --decider threshold --threshold 5
+. ~/.statefork-agent.env
+cd "$STATEFORK_ROOT"
+sudo "$STATEFORK_PYTHON" -m interface.shell --method waypoint --decider always_true
+sudo "$STATEFORK_PYTHON" -m interface.shell --method waypoint --decider threshold --threshold 5
 ```
 
-The shell does not expose `dockerfile_dir` or `build=False`; it creates a `waypoint_build` manager with default arguments. For arbitrary workspaces, prefer a small Python snippet.
+The shell does not expose `dockerfile_dir` or `build=False`; it creates a `waypoint_build` manager with default arguments. For arbitrary workspaces, prefer a small Python snippet or the bundled project driver.
 
 ## Key Waypoint Files
 
@@ -102,22 +99,22 @@ Special PID values:
 
 ## Binary Expectations
 
-StateFork's Waypoint manager uses:
+StateFork's Waypoint manager uses binaries from the StateFork repo root:
 
 ```text
-/users/alexxjk/Andy_StateFork/waypoint
-/users/alexxjk/Andy_StateFork/bash_init
+$STATEFORK_ROOT/waypoint
+$STATEFORK_ROOT/bash_init
 ```
 
-Waypoint repo builds:
+The bootstrap script builds binaries in `$WAYPOINT_ROOT` and creates relative symlinks in `$STATEFORK_ROOT`. Manual rebuild:
 
 ```bash
-cd /users/alexxjk/Andy_Waypoint
+. ~/.statefork-agent.env
+cd "$WAYPOINT_ROOT"
 go build -o waypoint cmd/waypoint/main.go
 go build -o bash_init cmd/bash-init/main.go
-cp waypoint /users/alexxjk/Andy_StateFork/waypoint
-cp bash_init /users/alexxjk/Andy_StateFork/bash_init
-chmod +x /users/alexxjk/Andy_StateFork/waypoint /users/alexxjk/Andy_StateFork/bash_init
+ln -sfn "$(python3 -c 'import os,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$WAYPOINT_ROOT/waypoint" "$STATEFORK_ROOT")" "$STATEFORK_ROOT/waypoint"
+ln -sfn "$(python3 -c 'import os,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$WAYPOINT_ROOT/bash_init" "$STATEFORK_ROOT")" "$STATEFORK_ROOT/bash_init"
 ```
 
 ## Python Environment
@@ -127,18 +124,22 @@ StateFork needs the packages in `requirements.txt`. It also needs `paramiko` whe
 Recommended setup when imports fail:
 
 ```bash
-ssh sf-exp 'cd /users/alexxjk/Andy_StateFork && python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt paramiko'
+. ~/.statefork-agent.env
+cd "$STATEFORK_ROOT"
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt paramiko
 ```
-
-This venv was created on `sf-exp` when the skill was authored; recreate it only if it is removed or stale.
 
 Then run StateFork with:
 
 ```bash
-ssh sf-exp 'cd /users/alexxjk/Andy_StateFork && sudo .venv/bin/python -m interface.shell --method waypoint --decider always_true'
+. ~/.statefork-agent.env
+cd "$STATEFORK_ROOT"
+sudo "$STATEFORK_PYTHON" -m interface.shell --method waypoint --decider always_true
 ```
 
-Or run the probe against that interpreter:
+Or run the probe:
 
 ```bash
 /path/to/skill/scripts/statefork_probe.sh
@@ -149,23 +150,29 @@ Or run the probe against that interpreter:
 Existing workspace, no Dockerfile build:
 
 ```bash
-ssh sf-exp 'cd /users/alexxjk/Andy_StateFork && sudo .venv/bin/python - <<'"'"'PY'"'"'
+ssh user@linux-vm '. ~/.statefork-agent.env && cd "$STATEFORK_ROOT" && sudo "$STATEFORK_PYTHON" - <<'"'"'PY'"'"'
+import os
 from controller import create_env_manager
 from decider import AlwaysTrueDecider
 
+workspace = os.path.join(os.environ["STATEFORK_WORK_ROOT"], "example-app")
+os.makedirs(workspace, exist_ok=True)
+
 manager = create_env_manager(
     "waypoint_build",
-    dockerfile_dir="/users/alexxjk/Andy_StateFork/app",
+    dockerfile_dir=workspace,
     build=False,
     decider=AlwaysTrueDecider(),
 )
-print("work_dir", manager.work_dir)
-rc, out, err = manager.exec_command("pwd")
-print("exec", rc, out, err)
-sid = manager.snapshot()
-print("snapshot", sid)
-print(manager.print_snapshot_tree())
-manager.cleanup()
+try:
+    print("work_dir", manager.work_dir)
+    rc, out, err = manager.exec_command("pwd")
+    print("exec", rc, out, err)
+    sid = manager.snapshot()
+    print("snapshot", sid)
+    print(manager.print_snapshot_tree())
+finally:
+    manager.cleanup()
 PY'
 ```
 
@@ -174,7 +181,7 @@ This StateFork path calls Waypoint `init <workspace> --quiet`, not `init --shell
 Existing workspace with shell memory checkpointing requires creating the shell-enabled Waypoint session first:
 
 ```bash
-ssh sf-exp 'cd /users/alexxjk/Andy_StateFork && sudo ./waypoint init /users/alexxjk/statefork-agent-work/my-app-base --quiet --shell'
+ssh user@linux-vm '. ~/.statefork-agent.env && cd "$STATEFORK_ROOT" && sudo ./waypoint init "$STATEFORK_WORK_ROOT/example-app" --quiet --shell'
 ```
 
 Then attach by session ID:
@@ -192,7 +199,7 @@ Dockerfile/build context:
 ```python
 from controller import create_env_manager
 
-manager = create_env_manager("waypoint_build", dockerfile_dir="/users/alexxjk/Andy_StateFork", build=True)
+manager = create_env_manager("waypoint_build", dockerfile_dir="/path/to/build-context", build=True)
 try:
     manager.exec_command("python --version")
     sid = manager.snapshot()
@@ -219,13 +226,13 @@ finally:
 Build or verify binaries:
 
 ```bash
-ssh sf-exp 'cd /users/alexxjk/Andy_Waypoint && go build -o waypoint cmd/waypoint/main.go && go build -o bash_init cmd/bash-init/main.go && ./waypoint version'
+ssh user@linux-vm '. ~/.statefork-agent.env && cd "$WAYPOINT_ROOT" && go build -o waypoint cmd/waypoint/main.go && go build -o bash_init cmd/bash-init/main.go && ./waypoint version'
 ```
 
 Initialize a workspace and run commands through a shell session:
 
 ```bash
-ssh sf-exp 'cd /users/alexxjk/Andy_Waypoint && sudo ./waypoint init /path/to/workspace --quiet --shell'
+ssh user@linux-vm '. ~/.statefork-agent.env && cd "$WAYPOINT_ROOT" && sudo ./waypoint init "$STATEFORK_WORK_ROOT/example-app" --quiet --shell'
 ```
 
 The quiet `init` output is:
@@ -294,14 +301,15 @@ Use the probe first:
 
 Common problems:
 
-- `waypoint: not found`: build Waypoint and copy or symlink `waypoint` to the StateFork root.
-- `bash_init` missing: build `cmd/bash-init/main.go` and copy it to StateFork root.
-- `ModuleNotFoundError: No module named 'psutil'`: install `requirements.txt` in a VM venv.
+- No Linux target configured: run `scripts/statefork_configure.sh --host user@linux-vm` or `scripts/statefork_configure.sh --local`.
+- `waypoint: not found`: build Waypoint and symlink `waypoint` to the StateFork root, or rerun bootstrap.
+- `bash_init` missing: build `cmd/bash-init/main.go` and symlink it to the StateFork root.
+- `ModuleNotFoundError: No module named 'psutil'`: install `requirements.txt` in a Linux venv.
 - `ModuleNotFoundError: No module named 'paramiko'`: install `paramiko`; this is required for eager controller imports even if Firecracker is not being used.
 - CRIU failure: check `criu --version`, `sudo criu check`, and kernel support.
 - OverlayFS failure: verify `overlay` appears in `/proc/filesystems`.
 - Build mode failure: `waypoint_build` with `build=True` requires a Dockerfile/build context and buildah support.
-- Sudo hangs over SSH: run with an interactive TTY (`ssh -t sf-exp ...`) or ask the user to authenticate on the VM.
+- Sudo hangs over SSH: run with an interactive TTY, for example `ssh -t user@linux-vm ...`, or ask the user to authenticate on the VM.
 - Virtual restore replays the wrong state: ensure all mutating commands went through `manager.exec_command`, not a side shell.
 - Network state vanished after restore: this is a known Waypoint limitation.
 - Leftover mounts/session directories: inspect `/tmp/waypoint-sessions` and `/tmp/waypoint-sessions-info`, then use force cleanup when safe.

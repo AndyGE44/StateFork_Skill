@@ -57,7 +57,7 @@ def main() -> int:
 
     parser = argparse.ArgumentParser(description="Keep a StateFork project manager alive over stdin/stdout.")
     parser.add_argument("--workspace", required=True, help="Base workspace directory to manage.")
-    parser.add_argument("--statefork-root", default=os.environ.get("STATEFORK_ROOT", "/users/alexxjk/Andy_StateFork"), help="StateFork repo root.")
+    parser.add_argument("--statefork-root", default=os.environ.get("STATEFORK_ROOT", os.getcwd()), help="StateFork repo root.")
     parser.add_argument("--build", action="store_true", help="Use Waypoint build mode for a Dockerfile/build context.")
     parser.add_argument("--decider", choices=["always_true", "always_false", "random", "threshold"], default="always_true")
     parser.add_argument("--threshold", type=float, default=5.0)
@@ -73,7 +73,7 @@ def main() -> int:
     os.makedirs(workspace, exist_ok=True)
 
     manager = create_env_manager(
-        "ckpt_build",
+        "waypoint_build",
         dockerfile_dir=workspace,
         build=args.build,
         decider=build_decider(args.decider, args.threshold),

@@ -1,58 +1,55 @@
 ---
 name: statefork
-description: Use StateFork/State Fork and Waypoint for Linux-only checkpoint/restore, snapshot trees, project sandboxes, agent coding environments, virtual-vs-physical snapshot experiments, backend debugging, and benchmark workflows. Trigger when Codex needs to use StateFork as a sandbox while building an app or project, automatically snapshot project milestones and report the snapshot tree, run or modify StateFork, use the Waypoint backend, connect to the sf-exp VM, checkpoint/restore a process or shell session, inspect StateFork controller managers or deciders, or troubleshoot CRIU/OverlayFS/container snapshotting.
+description: Use StateFork/State Fork and Waypoint for Linux-only checkpoint/restore, snapshot trees, project sandboxes, agent coding environments, virtual-vs-physical snapshot experiments, backend debugging, and benchmark workflows. Trigger when Codex needs to use StateFork as a sandbox while building an app or project, automatically snapshot project milestones and report the snapshot tree, run or modify StateFork, use the Waypoint backend, connect to a configured or user-provided Linux host, checkpoint/restore a process or shell session, inspect StateFork controller managers or deciders, or troubleshoot CRIU/OverlayFS/container snapshotting.
 ---
 
 # StateFork
 
 ## Core Rule
 
-Run real checkpoint/restore work on Linux, not on the local macOS workspace. Use the user-provided SSH target, a configured `STATEFORK_HOST`, or the default VM:
+Run real checkpoint/restore work on Linux. StateFork and Waypoint rely on Linux features such as CRIU, OverlayFS, namespaces, and usually sudo/root-capable operations.
+
+Do not assume a default VM. Use one of:
+
+- an explicit SSH target from the user, such as `user@linux-vm`
+- a configured local file at `~/.statefork-skill.env` containing `STATEFORK_HOST`
+- local Linux only when the user confirms it or `STATEFORK_LOCAL=1` is configured
+
+The skill installer only copies files; it does not run this skill's scripts or prompt for configuration. On first use, if `~/.statefork-skill.env` is missing and no SSH target was supplied, ask the user for either an SSH target or confirmation to use local Linux. If the user wants to configure later, explain that they can create `~/.statefork-skill.env` manually or run `scripts/statefork_configure.sh` later.
+
+For setup details, read `references/setup.md`. The short path is:
 
 ```bash
-ssh sf-exp
+/path/to/skill/scripts/statefork_configure.sh --host user@linux-vm
+/path/to/skill/scripts/statefork_bootstrap.sh
 ```
 
-Andy-specific fallback repo paths on `sf-exp`:
+Or, on a Linux machine:
 
-```text
-/users/alexxjk/Andy_StateFork
-/users/alexxjk/Andy_Waypoint
+```bash
+/path/to/skill/scripts/statefork_configure.sh --local
+/path/to/skill/scripts/statefork_bootstrap.sh
 ```
 
-If the Linux environment has not been configured yet, read `references/setup.md` and run `scripts/statefork_bootstrap.sh <ssh-host>` or `scripts/statefork_bootstrap.sh --local`. The user should only need to provide the SSH target or confirm local Linux usage.
+Use `scripts/statefork_probe.sh` before nontrivial work to confirm SSH/local target selection, repo paths, binaries, imports, sudo visibility, CRIU, and OverlayFS. The probe reads local `~/.statefork-skill.env` and Linux-side `~/.statefork-agent.env` when present.
 
-Use `scripts/statefork_probe.sh` before nontrivial work to confirm SSH, repo paths, binaries, imports, and basic dependency visibility. The probe reads `~/.statefork-agent.env` when present.
-
-Use the repo-local venv when running StateFork commands on `sf-exp`:
-
-```text
-/users/alexxjk/Andy_StateFork/.venv/bin/python
-```
-
-If StateFork Python imports fail, recreate/use a Linux venv on the VM and include `paramiko` in addition to `requirements.txt`; Firecracker support is imported eagerly by `controller/__init__.py`.
-
-When using this skill to build or modify a project, create, edit, install, test, and build everything inside the StateFork-managed environment on the VM. Do not scaffold project files, install dependencies, run app builds, or produce project artifacts on the local machine; local work should be limited to skill files, orchestration, and SSH commands.
+When using this skill to build or modify a project, create, edit, install, test, and build everything inside the StateFork-managed environment on the Linux host. Do not scaffold project files, install dependencies, run app builds, or produce project artifacts on the local machine; local work should be limited to skill files, orchestration, and SSH commands.
 
 ## Default Project Sandbox Workflow
 
 When the user asks to build, modify, debug, or test a project with StateFork, treat StateFork as the working environment, not merely as the subject being inspected.
 
-1. Start by probing the environment:
+1. Probe the environment:
 
 ```bash
-/path/to/this/skill/scripts/statefork_probe.sh
+/path/to/skill/scripts/statefork_probe.sh
 ```
 
-The probe auto-detects `/users/alexxjk/Andy_StateFork/.venv/bin/python` when present. To force a different Python, pass it through the environment:
+If setup is missing, read `references/setup.md` and run `scripts/statefork_configure.sh` plus `scripts/statefork_bootstrap.sh`.
 
-```bash
-STATEFORK_PYTHON=/users/alexxjk/Andy_StateFork/.venv/bin/python /path/to/this/skill/scripts/statefork_probe.sh
-```
+2. Read `references/project-mode.md` for the project sandbox protocol. Use `scripts/statefork_project_driver.py` when a task needs multiple edits, commands, and snapshots while preserving one live StateFork manager.
 
-2. Read `references/project-mode.md` for the project sandbox protocol. If setup is missing, read `references/setup.md` first. Use `scripts/statefork_project_driver.py` when a task needs multiple edits, commands, and snapshots while preserving one live StateFork manager.
-
-3. Create or select a project workspace on the Linux host, usually under `$STATEFORK_WORK_ROOT` and outside the StateFork repos, for example:
+3. Create or select a project workspace on the Linux host, usually under `$STATEFORK_WORK_ROOT` and outside the StateFork/Waypoint repos:
 
 ```text
 $STATEFORK_WORK_ROOT/<project-name>
@@ -63,7 +60,9 @@ $STATEFORK_WORK_ROOT/<project-name>
 - For ordinary requests like "build an app", "make a project", "create a website", or "implement this feature", use `waypoint_build` with `build=False`. Do not create a Dockerfile just because the user said "build".
 - Use `build=True` only when the user explicitly asks for a Dockerfile, container environment, image/build context, OS/system packages, `apt`, service-level dependencies, or otherwise needs a reproducible container-like Linux environment.
 
-5. Start a StateFork-managed environment for that workspace and do the project work inside the manager's `work_dir`. For coding projects, default to all-physical snapshots with `AlwaysTrueDecider`; virtual snapshots only replay commands issued through `manager.exec_command()` and can miss direct file edits. This default project mode primarily snapshots filesystem state. Current StateFork `waypoint_build(build=False)` calls Waypoint `init --quiet` and does not expose `init --shell`. If the user needs a live process or shell memory state preserved without Dockerfile mode, first create a Waypoint session with `init --shell` or a target PID, then attach with StateFork `waypoint_attach`.
+5. Start a StateFork-managed environment for that workspace and do the project work inside the manager's `work_dir`. For coding projects, default to all-physical snapshots with `AlwaysTrueDecider`; virtual snapshots only replay commands issued through `manager.exec_command()` and can miss direct file edits.
+
+Current StateFork `waypoint_build(build=False)` calls Waypoint `init --quiet` and does not expose `init --shell`. If the user needs a live process or shell memory state preserved without Dockerfile mode, first create a Waypoint session with `init --shell` or a target PID, then attach with StateFork `waypoint_attach`.
 
 6. Take snapshots at meaningful milestones:
 
@@ -80,7 +79,14 @@ $STATEFORK_WORK_ROOT/<project-name>
 
 Read `references/repo-map.md` when you need command examples, source landmarks, backend semantics, build steps, or troubleshooting details.
 
-For StateFork integration, work from `/users/alexxjk/Andy_StateFork`. The Waypoint backend is registered as:
+Use Linux-side config values from `~/.statefork-agent.env`:
+
+```bash
+. ~/.statefork-agent.env
+cd "$STATEFORK_ROOT"
+```
+
+The Waypoint backend is registered as:
 
 ```python
 from controller import create_env_manager
@@ -88,9 +94,9 @@ from controller import create_env_manager
 manager = create_env_manager("waypoint_build", dockerfile_dir="/path/to/workload", build=False)
 ```
 
-Use `build=False` for an ordinary existing workspace or app project. Use `build=True` only when the target directory is intentionally a Dockerfile/build context and the VM has the build dependencies available.
+Use `build=False` for an ordinary existing workspace or app project. Use `build=True` only when the target directory is intentionally a Dockerfile/build context and the Linux host has the build dependencies available.
 
-For direct backend operations, use the Waypoint CLI in `/users/alexxjk/Andy_Waypoint`, or the StateFork root symlink `/users/alexxjk/Andy_StateFork/waypoint`.
+For direct backend operations, use the Waypoint CLI in `$WAYPOINT_ROOT`, or the StateFork root symlinks `$STATEFORK_ROOT/waypoint` and `$STATEFORK_ROOT/bash_init`.
 
 Clean up sessions after experiments unless the user explicitly wants the live StateFork session preserved. If normal cleanup fails, use the backend's force cleanup path.
 

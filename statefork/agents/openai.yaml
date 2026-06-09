@@ -1,4 +1,4 @@
 interface:
   display_name: "StateFork"
-  short_description: "Build projects in StateFork snapshots"
-  default_prompt: "Use $statefork to build an app inside a StateFork sandbox, snapshot milestones, and report the snapshot tree."
+  short_description: "Build projects in Linux StateFork snapshots"
+  default_prompt: "Use $statefork to build an app inside a configured Linux StateFork sandbox, snapshot milestones, and report the snapshot tree."

@@ -14,6 +14,28 @@ python3 ~/.codex/skills/.system/skill-installer/scripts/install-skill-from-githu
 
 Restart Codex after installation.
 
+The installer only downloads the skill files. It does not run setup scripts and cannot prompt for a VM during installation.
+
+## Configure
+
+After install, configure either an SSH-accessible Linux VM:
+
+```bash
+~/.codex/skills/statefork/scripts/statefork_configure.sh --host user@linux-vm
+~/.codex/skills/statefork/scripts/statefork_bootstrap.sh
+```
+
+Or configure local Linux:
+
+```bash
+~/.codex/skills/statefork/scripts/statefork_configure.sh --local
+~/.codex/skills/statefork/scripts/statefork_bootstrap.sh
+```
+
+You can also skip configuration and let the agent ask for an SSH target the first time you use `$statefork`.
+
+The local config lives at `~/.statefork-skill.env`. The Linux-side runtime config lives at `~/.statefork-agent.env`.
+
 ## Use
 
 Invoke the skill in a prompt:
@@ -22,24 +44,7 @@ Invoke the skill in a prompt:
 Use $statefork to build a small app inside a StateFork environment. Snapshot milestones and return the snapshot tree.
 ```
 
-The skill expects a Linux environment because StateFork and Waypoint rely on CRIU, OverlayFS, and sudo/root-capable checkpoint operations.
-
-## Bootstrap A Linux VM
-
-The user only needs to provide an SSH target or run on local Linux:
-
-```bash
-statefork/scripts/statefork_bootstrap.sh <ssh-host>
-statefork/scripts/statefork_bootstrap.sh --local
-```
-
-The bootstrap script checks dependencies, clones or updates StateFork and Waypoint, builds Waypoint, creates the StateFork Python venv, writes `~/.statefork-agent.env`, and verifies imports.
-
-After bootstrap:
-
-```bash
-statefork/scripts/statefork_probe.sh <ssh-host>
-```
+The skill expects Linux because StateFork and Waypoint rely on CRIU, OverlayFS, and sudo/root-capable checkpoint operations.
 
 ## Project Policy
 

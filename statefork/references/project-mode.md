@@ -6,11 +6,11 @@ Use this when the user wants the agent to build or modify a project inside a Sta
 
 Default behavior:
 
-1. Run on the configured Linux host, for example `sf-exp`, or on local Linux with `--local`.
-2. Put the user's project workspace outside the StateFork repos, preferably under `$STATEFORK_WORK_ROOT/<slug>`.
+1. Run on the configured Linux host from `~/.statefork-skill.env`, on an explicit SSH target supplied by the user, or on local Linux with `--local`.
+2. Put the user's project workspace outside the StateFork and Waypoint repos, preferably under `$STATEFORK_WORK_ROOT/<slug>`.
 3. Start a StateFork `waypoint_build` manager against that workspace with `build=False` for normal app/project work.
 4. Use `AlwaysTrueDecider` for coding projects so every snapshot is physical.
-5. Do all project edits, dependency installs, tests, builds, generated files, and project artifacts inside the manager's `work_dir` on the VM.
+5. Do all project edits, dependency installs, tests, builds, generated files, and project artifacts inside the manager's `work_dir` on the Linux host.
 6. Do not create or build the requested project on the local machine. Use local files only for the skill itself, helper scripts, and SSH orchestration.
 7. Snapshot after each meaningful milestone.
 8. Return the latest snapshot tree and final snapshot ID/label whenever the task is complete.
@@ -55,29 +55,31 @@ Waypoint CLI supports `init <workspace> --quiet --shell`, but the current StateF
 
 ## Driver-Based Workflow
 
-Use the bundled driver when the work spans multiple commands or tool calls. Copy it to the VM:
+Use the bundled driver when the work spans multiple commands or tool calls. Copy it to the Linux host:
 
 ```bash
-scp /path/to/skill/scripts/statefork_project_driver.py sf-exp:/tmp/statefork_project_driver.py
+scp /path/to/skill/scripts/statefork_project_driver.py user@linux-vm:/tmp/statefork_project_driver.py
 ```
 
 Prepare a base workspace:
 
 ```bash
-ssh sf-exp '. ~/.statefork-agent.env && mkdir -p "$STATEFORK_WORK_ROOT/my-app-base"'
+ssh user@linux-vm '. ~/.statefork-agent.env && mkdir -p "$STATEFORK_WORK_ROOT/my-app-base"'
 ```
 
 Start the persistent driver from the StateFork repo root:
 
 ```bash
-ssh -t sf-exp '. ~/.statefork-agent.env && cd "$STATEFORK_ROOT" && sudo "$STATEFORK_PYTHON" /tmp/statefork_project_driver.py --workspace "$STATEFORK_WORK_ROOT/my-app-base"'
+ssh -t user@linux-vm '. ~/.statefork-agent.env && cd "$STATEFORK_ROOT" && sudo "$STATEFORK_PYTHON" /tmp/statefork_project_driver.py --workspace "$STATEFORK_WORK_ROOT/my-app-base"'
 ```
 
 For explicit Dockerfile/container mode:
 
 ```bash
-ssh -t sf-exp '. ~/.statefork-agent.env && cd "$STATEFORK_ROOT" && sudo "$STATEFORK_PYTHON" /tmp/statefork_project_driver.py --workspace "$STATEFORK_WORK_ROOT/my-app-base" --build'
+ssh -t user@linux-vm '. ~/.statefork-agent.env && cd "$STATEFORK_ROOT" && sudo "$STATEFORK_PYTHON" /tmp/statefork_project_driver.py --workspace "$STATEFORK_WORK_ROOT/my-app-base" --build'
 ```
+
+Replace `user@linux-vm` with the configured SSH target. If `~/.statefork-skill.env` exists locally, source it before raw `ssh`/`scp` commands or pass `$STATEFORK_HOST`.
 
 The driver reads `~/.statefork-agent.env`, so it can be run from another current directory as long as the StateFork venv interpreter is used.
 
