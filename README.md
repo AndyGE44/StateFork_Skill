@@ -25,6 +25,48 @@ After install, configure either an SSH-accessible Linux VM:
 ~/.codex/skills/statefork/scripts/statefork_bootstrap.sh
 ```
 
+Replace `user@linux-vm` with the same target you would normally pass to `ssh`.
+
+For example, if this works:
+
+```bash
+ssh ubuntu@12.34.56.78
+```
+
+Then configure StateFork with:
+
+```bash
+~/.codex/skills/statefork/scripts/statefork_configure.sh --host ubuntu@12.34.56.78
+```
+
+If you use an SSH config alias and this works:
+
+```bash
+ssh my-statefork-vm
+```
+
+Then configure with:
+
+```bash
+~/.codex/skills/statefork/scripts/statefork_configure.sh --host my-statefork-vm
+```
+
+For ports, private keys, or other SSH options, prefer `~/.ssh/config`:
+
+```sshconfig
+Host my-statefork-vm
+  HostName 12.34.56.78
+  User ubuntu
+  Port 2222
+  IdentityFile ~/.ssh/my_key
+```
+
+Then use the alias:
+
+```bash
+~/.codex/skills/statefork/scripts/statefork_configure.sh --host my-statefork-vm
+```
+
 Or configure local Linux:
 
 ```bash
